@@ -1,44 +1,23 @@
-// config.js - Конфигурация API
-
-// Базовый URL для API (замените на ваш домен PythonAnywhere)
-const API_BASE_URL = 'https://yourusername.pythonanywhere.com';
-
-// Альтернативная конфигурация для разработки
-// const API_BASE_URL = 'http://localhost:5000';
-
-// Настройки для запросов
-const API_CONFIG = {
-    headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+// Конфигурация API для разных окружений
+const CONFIG = {
+    // Для разработки (локальный сервер)
+    development: {
+        API_BASE_URL: 'http://localhost:5000'
     },
-    timeout: 10000 // 10 секунд
+    
+    // Для продакшена (PythonAnywhere)
+    production: {
+        API_BASE_URL: 'https://yourusername.pythonanywhere.com'  // Замените на ваш домен
+    }
 };
 
-// Функция для выполнения запросов с обработкой ошибок
-async function apiRequest(url, options = {}) {
-    try {
-        const response = await fetch(url, {
-            ...API_CONFIG,
-            ...options
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        return await response.json();
-    } catch (error) {
-        console.error('API Request Error:', error);
-        throw error;
-    }
-}
+// Определяем текущее окружение
+const ENVIRONMENT = window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1' ? 
+                   'development' : 'production';
 
-// Экспорт для использования в модулях (если используется)
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        API_BASE_URL,
-        API_CONFIG,
-        apiRequest
-    };
-}
+// Экспортируем конфигурацию
+const API_BASE_URL = CONFIG[ENVIRONMENT].API_BASE_URL;
+
+console.log(`Running in ${ENVIRONMENT} mode`);
+console.log(`API Base URL: ${API_BASE_URL}`);
