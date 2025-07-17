@@ -10,6 +10,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .container {
             background: rgba(255, 255, 255, 0.1);
@@ -17,6 +18,7 @@
             border-radius: 20px;
             padding: 30px;
             margin-top: 30px;
+            margin-bottom: 30px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
         .playlist-card {
@@ -26,6 +28,7 @@
             cursor: pointer;
             transition: all 0.3s ease;
             backdrop-filter: blur(5px);
+            height: 100%;
         }
         .playlist-card:hover {
             transform: translateY(-5px);
@@ -60,9 +63,11 @@
             color: white;
             font-weight: bold;
             transition: all 0.3s ease;
+            border-radius: 8px;
+            padding: 8px 16px;
         }
         .btn-play:hover {
-            transform: scale(1.1);
+            transform: scale(1.05);
             box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
         }
         .error-message {
@@ -73,6 +78,50 @@
             border-radius: 10px;
             margin: 20px 0;
         }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online { background-color: #28a745; }
+        .status-offline { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; }
+        .stats-card {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        .refresh-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+        .api-status {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 10px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
@@ -80,6 +129,20 @@
         <div class="text-center mb-5">
             <h1 class="display-4 fw-bold mb-3">🎵 Музыкальные плейлисты</h1>
             <p class="lead">Ваша музыкальная коллекция всегда под рукой</p>
+        </div>
+        
+        <!-- Статус API -->
+        <div id="api-status" class="api-status">
+            <div class="row">
+                <div class="col-md-6">
+                    <span class="status-indicator status-offline" id="db-status"></span>
+                    <span>База данных: <span id="db-text">Проверка...</span></span>
+                </div>
+                <div class="col-md-6">
+                    <span class="status-indicator status-offline" id="telegram-status"></span>
+                    <span>Telegram API: <span id="telegram-text">Проверка...</span></span>
+                </div>
+            </div>
         </div>
         
         <div id="loading" class="loading">
@@ -94,6 +157,24 @@
                 <button class="btn btn-light btn-sm" onclick="loadPlaylists()">
                     🔄 Попробовать снова
                 </button>
+            </div>
+        </div>
+        
+        <!-- Статистика -->
+        <div id="stats-container" class="stats-card d-none">
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <h4 id="total-playlists">0</h4>
+                    <p>Плейлистов</p>
+                </div>
+                <div class="col-md-4">
+                    <h4 id="total-songs">0</h4>
+                    <p>Треков</p>
+                </div>
+                <div class="col-md-4">
+                    <h4 id="api-response-time">0ms</h4>
+                    <p>Время ответа</p>
+                </div>
             </div>
         </div>
         
@@ -116,7 +197,7 @@
                     <div class="card-body">
                         <h5 class="card-title">Как создать плейлист:</h5>
                         <ol class="text-start">
-                            <li>Запустите Telegram-бота</li>
+                            <li>Найдите Telegram-бота @your_music_bot</li>
                             <li>Отправьте команду <code>/start</code></li>
                             <li>Загрузите аудиофайл</li>
                             <li>Выберите "Создать новый плейлист"</li>
@@ -129,35 +210,85 @@
     </div>
 
     <!-- Кнопка обновления -->
-    <div class="fixed-bottom p-3" style="z-index: 1000;">
-        <div class="d-flex justify-content-end">
-            <button onclick="loadPlaylists()" class="btn btn-light btn-sm">
-                🔄 Обновить
-            </button>
-        </div>
-    </div>
+    <button class="refresh-btn" onclick="loadPlaylists()" title="Обновить">
+        🔄
+    </button>
 
     <script src="config.js"></script>
     <script>
+        let apiResponseTime = 0;
+        
+        // Функция проверки статуса API
+        async function checkApiStatus() {
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                apiResponseTime = Date.now() - startTime;
+                
+                const data = await response.json();
+                
+                // Обновляем статус базы данных
+                const dbStatus = document.getElementById('db-status');
+                const dbText = document.getElementById('db-text');
+                if (data.database === 'OK') {
+                    dbStatus.className = 'status-indicator status-online';
+                    dbText.textContent = 'Подключена';
+                } else {
+                    dbStatus.className = 'status-indicator status-offline';
+                    dbText.textContent = 'Ошибка';
+                }
+                
+                // Обновляем статус Telegram API
+                const telegramStatus = document.getElementById('telegram-status');
+                const telegramText = document.getElementById('telegram-text');
+                if (data.telegram_api === 'OK') {
+                    telegramStatus.className = 'status-indicator status-online';
+                    telegramText.textContent = `Подключен (${data.bot_username || 'Unknown'})`;
+                } else {
+                    telegramStatus.className = 'status-indicator status-offline';
+                    telegramText.textContent = 'Ошибка';
+                }
+                
+                // Обновляем время ответа
+                document.getElementById('api-response-time').textContent = `${apiResponseTime}ms`;
+                
+            } catch (error) {
+                console.error('Ошибка при проверке статуса API:', error);
+                document.getElementById('db-status').className = 'status-indicator status-offline';
+                document.getElementById('db-text').textContent = 'Недоступно';
+                document.getElementById('telegram-status').className = 'status-indicator status-offline';
+                document.getElementById('telegram-text').textContent = 'Недоступно';
+            }
+        }
+        
         // Функция загрузки плейлистов
         async function loadPlaylists() {
             const loading = document.getElementById('loading');
             const errorContainer = document.getElementById('error-container');
             const playlistsContainer = document.getElementById('playlists-container');
             const emptyState = document.getElementById('empty-state');
+            const statsContainer = document.getElementById('stats-container');
             
             // Показываем загрузку
             loading.classList.remove('d-none');
             errorContainer.classList.add('d-none');
             playlistsContainer.classList.add('d-none');
             emptyState.classList.add('d-none');
+            statsContainer.classList.add('d-none');
             
             try {
+                // Проверяем статус API
+                await checkApiStatus();
+                
+                // Загружаем плейлисты
                 const response = await fetch(`${API_BASE_URL}/api/playlists`);
                 const data = await response.json();
                 
                 if (data.success) {
                     loading.classList.add('d-none');
+                    
+                    // Загружаем статистику
+                    await loadStats();
                     
                     if (data.playlists.length === 0) {
                         emptyState.classList.remove('d-none');
@@ -165,6 +296,8 @@
                         displayPlaylists(data.playlists);
                         playlistsContainer.classList.remove('d-none');
                     }
+                    
+                    statsContainer.classList.remove('d-none');
                 } else {
                     throw new Error(data.error || 'Неизвестная ошибка');
                 }
@@ -177,6 +310,21 @@
             }
         }
         
+        // Функция загрузки статистики
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/stats`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('total-playlists').textContent = data.total_playlists;
+                    document.getElementById('total-songs').textContent = data.total_songs;
+                }
+            } catch (error) {
+                console.error('Ошибка при загрузке статистики:', error);
+            }
+        }
+        
         // Функция отображения плейлистов
         function displayPlaylists(playlists) {
             const container = document.getElementById('playlists-container');
@@ -186,13 +334,13 @@
                 const playlistCard = document.createElement('div');
                 playlistCard.className = 'col';
                 playlistCard.innerHTML = `
-                    <div class="card playlist-card h-100">
+                    <div class="card playlist-card">
                         <div class="card-body d-flex align-items-center">
                             <div class="flex-grow-1">
                                 <h5 class="card-title">${playlist.name}</h5>
                                 <p class="card-text text-muted">ID: ${playlist.id}</p>
                             </div>
-                            <button onclick="openPlaylist(${playlist.id})" class="btn btn-play btn-sm">
+                            <button onclick="openPlaylist(${playlist.id})" class="btn btn-play">
                                 ▶️ Открыть
                             </button>
                         </div>
@@ -209,6 +357,9 @@
         
         // Загружаем плейлисты при загрузке страницы
         document.addEventListener('DOMContentLoaded', loadPlaylists);
+        
+        // Обновляем статус каждые 30 секунд
+        setInterval(checkApiStatus, 30000);
     </script>
 </body>
 </html>
